@@ -8,7 +8,7 @@ fi
 filesdir=$1
 searchstr=$2
 
-if ! [ -e $filesdir ]; then
+if ! [ -d $filesdir ]; then
 	echo "filesdir does not represent a directory"
 	exit 1
 fi
