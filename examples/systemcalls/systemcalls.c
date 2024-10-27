@@ -16,7 +16,16 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int ret = -1;
 
+    ret = system(cmd);
+    if (!ret)
+        printf("System call success");
+    else
+    {
+        perror("System call failed with following error:");
+        return false;
+    }
     return true;
 }
 
@@ -40,6 +49,11 @@ bool do_exec(int count, ...)
     va_start(args, count);
     char * command[count+1];
     int i;
+    pid_t pid;
+    int status;
+    int wstatus;
+    int rstatus;
+
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -58,9 +72,46 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    if ((pid = fork()) == -1)
+    {
+        perror("Error on fork:");
+        va_end(args);
+        return false;
+    }
+    else if (pid == 0) //child process
+    {
+        va_end(args);
+        if ((status = execv(command[0], command)) == -1)
+        {
+            perror("Error on execv:");
+            exit(1);
+        }
+        else
+            exit(0);
+    }
+    else //parent process
+    {
+        if ((pid = waitpid(-1, &wstatus, 0)) == -1)
+        {
+            perror("Error on waitpid:");
+            va_end(args);
+            return false;
+        }
+        else
+        {
+            if (WIFEXITED(wstatus))
+            {
+                if ((rstatus = WEXITSTATUS(wstatus)) == 1)
+                {
+                    printf("Error return from waitpid: %d\n", rstatus);
+                    return false;
+                }
+                else
+                    printf("Success return from waitpid: %d\n", rstatus);
+            }
+        }
+    }
     va_end(args);
-
     return true;
 }
 
@@ -75,6 +126,18 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_start(args, count);
     char * command[count+1];
     int i;
+    pid_t pid;
+    int status;
+    int wstatus;
+    int rstatus;
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0)
+    {
+        perror("open:");
+        va_end(args);
+        return false;
+    }
+
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -92,8 +155,56 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
-
+     if ((pid = fork()) == -1)
+     {
+         perror("Error on fork:");
+         va_end(args);
+         close(fd);
+         return false;
+     }
+     else if (pid == 0) //child process
+     {
+         va_end(args);
+         if (dup2(fd, 1) < 0)
+         {
+            perror("dup2");
+            close(fd);
+            exit(1);
+         }
+         close(fd);
+         if ((status = execv(command[0], command)) == -1)
+         {
+             perror("Error on execv:");
+             exit(1);
+         }
+         else
+             exit(0);
+     }
+     else //parent process
+     {
+         if ((pid = waitpid(-1, &wstatus, 0)) == -1)
+         {
+             perror("Error on waitpid:");
+             va_end(args);
+             close(fd);
+             return false;
+         }
+         else
+         {
+             if (WIFEXITED(wstatus))
+             {
+                 if ((rstatus = WEXITSTATUS(wstatus)) == 1)
+                 {
+                     printf("Error return from waitpid: %d\n", rstatus);
+                     close(fd);
+                     return false;
+                 }
+                 else
+                     printf("Success return from waitpid: %d\n", rstatus);
+             }
+         }
+     }
     va_end(args);
-
+    close(fd);
     return true;
 }
